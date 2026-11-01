@@ -31,7 +31,16 @@ try:
                 assert len(content)==record['bytes'] and hashlib.sha256(content).hexdigest()==record['sha256'],name
                 target=staging/rel;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(content);seen.add(name)
     assert seen==set(expected),'Missing files'
+    # Only application code is editable outside the verified packs; images stay exact.
+    application=ROOT/'site'/'app.js'
+    assert application.is_file() and not application.is_symlink()
+    code=application.read_bytes();code.decode('utf-8')
+    (staging/'app.js').write_bytes(code)
     html=(staging/'index.html').read_text(encoding='utf-8')
+    version=hashlib.sha256(code).hexdigest()[:12]
+    html,count=re.subn(r'(<script src=")app\.js(?:\?[^"]*)?(?=")',lambda m:m.group(1)+'app.js?v='+version,html)
+    assert count==1,'Expected one application script'
+    (staging/'index.html').write_text(html,encoding='utf-8')
     catalog_name=re.search(r'<script src="(catalog[^"?]*\.js)',html).group(1)
     catalog=json.loads((staging/catalog_name).read_text(encoding='utf-8').split('=',1)[1].rstrip(';\n'))
     episodes=catalog['episodes'];assert len(episodes)==manifest['episodes']==271
@@ -54,6 +63,6 @@ try:
     (staging/'.nojekyll').touch()
     if OUT.exists():shutil.rmtree(OUT)
     staging.replace(OUT)
-    print(f'PASS: {len(episodes)} episodes, {len(images)} WebP images, {len(seen)} exact files; all paths, sizes, hashes and ZIP CRCs verified')
+    print(f'PASS: {len(episodes)} episodes, {len(images)} unchanged WebP images; {len(seen)} packed files verified; application code applied')
 finally:
     if staging.exists():shutil.rmtree(staging)
