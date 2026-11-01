@@ -2,41 +2,89 @@ name: Publish comic library
 on:
   push:
     branches: [main]
-    paths:
-      - 'asset-packs/**'
-      - 'scripts/build-static.py'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: github-pages
+  group: pages-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 jobs:
   build:
+    name: Verify images and browsers
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: read
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - run: python3 scripts/build-static.py
-      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify all packed images and corrections
+        run: python3 scripts/build-static.py
+      - run: npm ci
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Test desktop and mobile browsers before deployment
+        run: npm test
+      - name: Save browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: browser-report-build
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
       - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           path: dist
   deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+  verify-live:
+    name: Verify public Pages in browsers
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Test the deployed commit on the public URL
+        run: npm test -- --grep-invert '@all-assets'
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ needs.deploy.outputs.page_url }}
+          EXPECTED_DEPLOY_SHA: ${{ github.sha }}
+      - name: Save public-site browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: browser-report-live
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

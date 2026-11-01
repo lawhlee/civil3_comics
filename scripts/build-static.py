@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Verify bounded ZIP packs and every file before atomically assembling dist/."""
-import hashlib,json,re,shutil,stat,tempfile,zipfile
+import hashlib,json,os,re,shutil,stat,tempfile,zipfile
 from pathlib import Path,PurePosixPath
 ROOT=Path(__file__).resolve().parents[1];PACKS=ROOT/'asset-packs';OUT=ROOT/'dist'
 manifest=json.loads((PACKS/'manifest.json').read_text(encoding='utf-8'))
@@ -50,6 +50,7 @@ try:
         data=(staging/name).read_bytes();assert data[:4]==b'RIFF' and data[8:12]==b'WEBP',name
     for ref in re.findall(r'(?:src|href)="([^"#?]+)',html):
         if not ref.startswith(('https:','http:','data:')):safe(ref);assert (staging/ref).is_file(),ref
+    (staging/'build-info.json').write_text(json.dumps({'commit':os.environ.get('GITHUB_SHA','local')})+'\n',encoding='utf-8')
     (staging/'.nojekyll').touch()
     if OUT.exists():shutil.rmtree(OUT)
     staging.replace(OUT)
