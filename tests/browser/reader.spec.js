@@ -247,8 +247,25 @@ test('failed image displays retry UI and successfully recovers @fault', async ({
   expect(await page.locator('#comicImage').getAttribute('src')).toContain('?retry=');
 });
 
-test('transient 503 errors recover automatically for reader and thumbnails @fault', async ({ page }) => {
+test('transient 503 errors recover automatically for reader and thumbnails @fault', async ({ page, baseURL }) => {
+  const heroPath = new URL('assets/L06_001_thumb.webp', baseURL).pathname;
+  page.expectedImageFailures.push(`503 ${heroPath}`);
+  let coverAttempts = 0, releaseScript;
+  const failedCover = new Promise(resolve => { releaseScript = resolve; });
+  await page.route(url => url.pathname === heroPath, async route => {
+    coverAttempts++;
+    if (coverAttempts === 1) {
+      await route.fulfill({ status: 503, body: 'Cover failed before app startup' });
+      releaseScript();
+    } else await route.continue();
+  });
+  await page.route(url => url.pathname.endsWith('/app.js'), async route => {
+    await failedCover;
+    await route.continue();
+  });
   await page.goto('./');
+  await expect.poll(() => page.locator('.hero-cover img').evaluate(im => im.complete && im.naturalWidth > 0)).toBe(true);
+  expect(coverAttempts).toBeGreaterThanOrEqual(2);
   const { episodes } = await catalog(page);
   const readerPath = new URL(episodes[0].sources.standard.src, page.url()).pathname;
   let readerAttempts = 0;

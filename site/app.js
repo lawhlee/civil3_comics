@@ -21,8 +21,8 @@
  // Covers, cards and resume thumbnails also need to survive transient CDN errors.
  const thumbnailRetries=new WeakMap();
  document.addEventListener('load',event=>{if(event.target instanceof HTMLImageElement)thumbnailRetries.delete(event.target);},true);
- document.addEventListener('error',event=>{
-  const im=event.target;if(!(im instanceof HTMLImageElement)||im.id==='comicImage')return;
+ function retryThumbnail(im){
+  if(!(im instanceof HTMLImageElement)||im.id==='comicImage')return;
   const failed=im.getAttribute('src');if(!failed)return;
   let state=thumbnailRetries.get(im);
   if(!state||state.request!==failed){state={source:failed,request:failed,attempts:0};thumbnailRetries.set(im,state);}
@@ -32,7 +32,10 @@
    if(!im.isConnected||thumbnailRetries.get(im)!==state||im.getAttribute('src')!==failed)return;
    state.request=retryUrl(state.source,attempt);im.src=state.request;
   },retryDelay(attempt));
- },true);
+ }
+ document.addEventListener('error',event=>retryThumbnail(event.target),true);
+ // A cover may fail before this script finishes loading.
+ for(const im of document.images)if(im.complete&&!im.naturalWidth)retryThumbnail(im);
  function persist(){try{localStorage.setItem(KEY,JSON.stringify({saved:[...saved],read:[...read],positions,last,quality}));}catch{}}
  function toast(t){$('toast').textContent=t;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,2300);}
  function chip(l,selected,count){return `<button type="button" class="chapter-tab${selected?' active':''}" data-lecture="${l}" aria-pressed="${selected}">${l?`제${l}강`:'전체'}<span>${count}</span></button>`;}
