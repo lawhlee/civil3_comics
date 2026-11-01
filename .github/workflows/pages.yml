@@ -75,7 +75,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - name: Test the deployed commit on the public URL
-        run: npm test -- --grep-invert '@all-assets'
+        run: npm test
         env:
           PLAYWRIGHT_BASE_URL: ${{ needs.deploy.outputs.page_url }}
           EXPECTED_DEPLOY_SHA: ${{ github.sha }}

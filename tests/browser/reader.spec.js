@@ -30,7 +30,9 @@ async function open(page, episode) {
   await imageReady(page, episode.sources[quality]);
 }
 async function screenshot(page, testInfo, name) {
-  await testInfo.attach(name, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 async function noOverflow(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -55,7 +57,7 @@ test.beforeEach(async ({ page, request }) => {
   });
 });
 test.afterEach(async ({ page }, testInfo) => {
-  if (!testInfo.title.includes('@fault')) expect(page.testErrors).toEqual([]);
+  expect(page.testErrors.filter(error => error !== page.expectedImageFailure)).toEqual([]);
 });
 
 test('library thumbnails, Korean/case search, filters and empty state', async ({ page }, testInfo) => {
@@ -193,9 +195,17 @@ test('keyboard or mobile swipes navigate; narrow portrait and landscape fit', as
   if (testInfo.project.name.startsWith('mobile')) {
     await page.evaluate(() => {
       const stage = document.getElementById('comicStage');
-      const touch = x => new Touch({ identifier: 1, target: stage, clientX: x, clientY: 350 });
-      stage.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(300)], bubbles: true }));
-      stage.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [touch(100)], bubbles: true }));
+      // WebKit does not expose a constructible Touch. Exercise the handler with
+      // browser events carrying the same coordinates as a one-finger swipe.
+      const touch = x => ({ identifier: 1, target: stage, clientX: x, clientY: 350 });
+      const start = new Event('touchstart', { bubbles: true });
+      Object.defineProperty(start, 'touches', { value: [touch(300)] });
+      stage.dispatchEvent(start);
+      const end = new Event('touchend', { bubbles: true });
+      Object.defineProperties(end, {
+        touches: { value: [] }, changedTouches: { value: [touch(100)] },
+      });
+      stage.dispatchEvent(end);
     });
   } else {
     await page.locator('#readerTitle').click();
@@ -219,6 +229,7 @@ test('failed image displays retry UI and successfully recovers @fault', async ({
   const { episodes } = await catalog(page);
   const source = episodes[0].sources.standard;
   const pathname = new URL(source.src, page.url()).pathname;
+  page.expectedImageFailure = `404 ${pathname}`;
   const block = route => route.fulfill({ status: 404, body: 'Test image unavailable' });
   const matches = url => url.pathname === pathname;
   await page.route(matches, block);
