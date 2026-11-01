@@ -31,7 +31,7 @@ async function open(page, episode) {
 }
 async function screenshot(page, testInfo, name) {
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true });
+  await page.screenshot({ path, scale: 'css' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 async function noOverflow(page) {
