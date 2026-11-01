@@ -161,6 +161,59 @@ test('rapid quality changes and navigation show the final selection', async ({ p
   await imageReady(page, episodes[2].sources.low);
 });
 
+test('a delayed obsolete image cannot replace the latest quality or episode', async ({ page }) => {
+  await page.goto('./');
+  const { episodes } = await catalog(page);
+  await open(page, episodes[0]);
+  const oldPath = new URL(episodes[0].sources.low.src, page.url()).pathname;
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { requested = resolve; });
+  await page.route(url => url.pathname === oldPath, async route => {
+    requested();
+    await gate;
+    await route.continue().catch(() => {}); // The browser may cancel an obsolete request.
+  });
+  try {
+    await page.locator('#qualitySelect').selectOption('low');
+    await started;
+    await page.locator('#qualitySelect').selectOption('high');
+    await page.locator('#next').click();
+    await imageReady(page, episodes[1].sources.high);
+  } finally { release(); }
+  await page.unrouteAll({ behavior: 'wait' });
+  await imageReady(page, episodes[1].sources.high);
+  await expect(page.locator('#readerTitle')).toHaveText(episodes[1].title);
+});
+
+test('keyboard or mobile swipes navigate; narrow portrait and landscape fit', async ({ page }, testInfo) => {
+  await page.goto('./');
+  const { episodes } = await catalog(page);
+  await open(page, episodes[0]);
+  if (testInfo.project.name.startsWith('mobile')) {
+    await page.evaluate(() => {
+      const stage = document.getElementById('comicStage');
+      const touch = x => new Touch({ identifier: 1, target: stage, clientX: x, clientY: 350 });
+      stage.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(300)], bubbles: true }));
+      stage.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [touch(100)], bubbles: true }));
+    });
+  } else {
+    await page.locator('#readerTitle').click();
+    await page.keyboard.press('ArrowRight');
+  }
+  await imageReady(page, episodes[1].sources.standard);
+  await expect(page).toHaveURL(/#read\/L06_002$/);
+  for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    await noOverflow(page);
+    await expect(page.locator('#qualitySelect')).toBeVisible();
+    await page.locator('#qualitySelect').selectOption('high');
+    await imageReady(page, episodes[1].sources.high);
+    await noOverflow(page);
+  }
+  await screenshot(page, testInfo, 'landscape-reader');
+});
+
 test('failed image displays retry UI and successfully recovers @fault', async ({ page }) => {
   await page.goto('./');
   const { episodes } = await catalog(page);

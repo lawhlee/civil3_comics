@@ -49,3 +49,33 @@ python3 scripts/build-static.py
 기존 민법 판례 만화 서재 v5의 소스 커밋 `125c16886af45f58aea0d15c7dca203310a61e78`에서 가져왔습니다. 기존 Site는 변경하지 않았습니다. 73편의 83개 교정 항목과 나머지 198편을 그대로 보존합니다. 상세 교정 내역은 웹사이트 파일 `내용_교정내역.txt`, `텍스트_정정내역.txt`에 있습니다.
 
 강의안의 인용 취지에 한정한 교육용 요약입니다.
+
+## 브라우저 회귀 테스트
+
+Node.js 24와 Python이 있는 환경에서 다음을 실행합니다.
+
+```sh
+python3 scripts/build-static.py
+npm ci
+npx playwright install --with-deps chromium webkit
+npm test
+```
+
+테스트 서버는 GitHub Pages와 같은 `/civil3_comics/` 하위 경로로 실제 `dist`를 제공합니다. 데스크톱 Chromium·WebKit, Pixel 7 크기의 Chromium, iPhone 13 크기의 WebKit에서 확인합니다. 모바일 검사는 터치·화면 크기 에뮬레이션이며 실제 휴대폰 하드웨어 검사는 아닙니다.
+
+- 목록 미리보기, 제목·한글·판례번호 검색, 강의 필터와 검색 결과 없음
+- 저용량 480px·표준 768px·고화질 1024px의 실제 디코딩 크기와 화질 설정 유지
+- 이전·다음 편, 강의 경계, 첫·마지막 편, 목차 검색, 브라우저 뒤로·앞으로
+- 빠른 화질 변경, 느린 이전 요청 뒤의 작품 이동, 키보드·터치 이동
+- 320px 세로 화면과 가로 화면, 고화질 확대, 이미지 404 후 다시 불러오기
+- 전체 1,084개 이미지의 브라우저 디코딩을 두 엔진에서 검사
+
+PR과 `main`의 모든 푸시에서 원본 해시 검사와 브라우저 검사를 실행합니다. 브라우저 검사가 실패하면 Pages 아티팩트 업로드와 배포를 진행하지 않습니다. 배포 후에는 공개 URL에서 같은 기능 검사를 다시 수행하며, `build-info.json`의 커밋이 해당 배포와 일치하는지도 확인합니다. 공개 URL에서는 대량 이미지 검사를 반복하지 않습니다. 배포 후 검사가 실패하면 실행이 실패로 표시되며 자동 롤백은 하지 않습니다.
+
+Actions의 `browser-report-build`, `browser-report-live` 아티팩트에 HTML 보고서와 화면 캡처를 14일 보관합니다. 실패 시 trace와 동영상도 남깁니다. 로컬 보고서는 `playwright-report/index.html`에서 확인할 수 있습니다.
+
+기존 공개 사이트를 직접 검사하려면 다음처럼 실행합니다.
+
+```sh
+PLAYWRIGHT_BASE_URL=https://lawhlee.github.io/civil3_comics/ npm test
+```
